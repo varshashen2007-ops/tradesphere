@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import authRouter from './routes/auth.routes';
 import morgan from 'morgan';
 import { env } from './config/env';
 import { globalErrorHandler, notFoundHandler } from './middleware/error.middleware';
@@ -31,7 +32,7 @@ app.get('/health', (_req, res) => {
 });
 
 // TODO: Register routes here as you build them
-// app.use('/api/auth', authRouter);
+app.use('/api/auth', authRouter);
 // app.use('/api/stocks', stocksRouter);
 // app.use('/api/orders', ordersRouter);
 // app.use('/api/portfolio', portfolioRouter);
