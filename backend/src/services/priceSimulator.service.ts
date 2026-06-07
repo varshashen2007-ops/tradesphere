@@ -1,5 +1,6 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { query } from '../config/database';
+import { OrdersService } from './orders.service';
 
 interface StockPrice {
   id: string;
@@ -161,6 +162,14 @@ export class PriceSimulator {
     }
 
     await this.batchUpdatePrices(updates);
+
+    const priceMap = new Map<string, number>();
+
+    ticks.forEach((tick) => {
+      priceMap.set(tick.symbol, tick.price);
+    });
+
+    await OrdersService.processLimitOrders(priceMap);
   }
 
   private calculateNewPrice(stock: StockPrice): number {
