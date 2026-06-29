@@ -1,5 +1,7 @@
 import { Request } from 'express';
 
+export type UserRole = 'USER' | 'ADMIN';
+
 export interface User {
   id: string;
   email: string;
@@ -7,6 +9,7 @@ export interface User {
   full_name: string;
   avatar_url?: string;
   is_verified: boolean;
+  role: UserRole;
   created_at: Date;
   updated_at: Date;
 }
@@ -16,6 +19,7 @@ export interface AuthenticatedRequest extends Request {
     id: string;
     email: string;
     username: string;
+    role: UserRole;
   };
 }
 

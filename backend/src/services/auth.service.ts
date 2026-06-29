@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getClient } from '../config/database';
 import { env } from '../config/env';
-import { User, Wallet } from '../types';
+import { User, Wallet, UserRole } from '../types';
 import { AppError } from '../middleware/error.middleware';
 
 interface RegisterInput {
@@ -28,6 +28,7 @@ interface JwtPayload {
   id: string;
   email: string;
   username: string;
+  role: UserRole;
 }
 
 export class AuthService {
@@ -40,7 +41,6 @@ export class AuthService {
   static async register(input: RegisterInput): Promise<AuthPayload> {
     const { email, username, fullName, password } = input;
 
-    // Ensure email/username is unique
     const existingUsers = await query<User>(
       'SELECT id FROM users WHERE email = $1 OR username = $2',
       [email.toLowerCase(), username.toLowerCase()]
@@ -50,20 +50,19 @@ export class AuthService {
       throw new AppError('Email or username already in use', 409);
     }
 
-    // Hash the password
     const passwordHash = await bcrypt.hash(password, env.bcryptRounds);
 
-    // Transaction: create user, wallet, leaderboard
     const client = await getClient();
+
     try {
       await client.query('BEGIN');
 
       const userId = uuidv4();
 
       const userResult = await client.query(
-        `INSERT INTO users (id, email, username, full_name, password_hash)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, email, username, full_name, avatar_url, is_verified, created_at, updated_at`,
+        `INSERT INTO users (id, email, username, full_name, password_hash, role)
+         VALUES ($1, $2, $3, $4, $5, 'USER')
+         RETURNING id, email, username, full_name, avatar_url, is_verified, role, created_at, updated_at`,
         [userId, email.toLowerCase(), username.toLowerCase(), fullName, passwordHash]
       );
 
@@ -74,7 +73,6 @@ export class AuthService {
         [userId]
       );
 
-      // Create leaderboard entry
       await client.query(
         `INSERT INTO leaderboard (user_id, portfolio_value)
          VALUES ($1, 1000000.00)`,
@@ -90,6 +88,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         username: user.username,
+        role: user.role,
       });
 
       return { user, token, wallet };
@@ -104,27 +103,25 @@ export class AuthService {
   static async login(input: LoginInput): Promise<AuthPayload> {
     const { email, password } = input;
 
-    // Fetch user by email
     const users = await query<User & { password_hash: string }>(
       `SELECT id, email, username, full_name, avatar_url, is_verified,
-              password_hash, created_at, updated_at
+              password_hash, role, created_at, updated_at
        FROM users WHERE email = $1`,
       [email.toLowerCase()]
     );
 
     if (users.length === 0) {
-      // Deliberately vague — never confirm whether email exists
       throw new AppError('Invalid email or password', 401);
     }
 
     const user = users[0];
+
     const isValid = await bcrypt.compare(password, user.password_hash);
 
     if (!isValid) {
       throw new AppError('Invalid email or password', 401);
     }
 
-    // Fetch wallet
     const wallets = await query<Wallet>(
       'SELECT * FROM wallets WHERE user_id = $1',
       [user.id]
@@ -134,9 +131,9 @@ export class AuthService {
       id: user.id,
       email: user.email,
       username: user.username,
+      role: user.role,
     });
 
-    // Exclude the password_hash from the user object before returning
     const { password_hash, ...userWithoutPassword } = user;
 
     return {
@@ -148,7 +145,7 @@ export class AuthService {
 
   static async getMe(userId: string): Promise<{ user: User; wallet: Wallet }> {
     const users = await query<User>(
-      `SELECT id, email, username, full_name, avatar_url, is_verified, created_at, updated_at
+      `SELECT id, email, username, full_name, avatar_url, is_verified, role, created_at, updated_at
        FROM users WHERE id = $1`,
       [userId]
     );
@@ -177,6 +174,7 @@ export class AuthService {
       fields.push(`full_name = $${paramIndex++}`);
       values.push(updates.fullName);
     }
+
     if (updates.avatarUrl) {
       fields.push(`avatar_url = $${paramIndex++}`);
       values.push(updates.avatarUrl);
@@ -192,7 +190,7 @@ export class AuthService {
     const result = await query<User>(
       `UPDATE users SET ${fields.join(', ')}
        WHERE id = $${paramIndex}
-       RETURNING id, email, username, full_name, avatar_url, is_verified, created_at, updated_at`,
+       RETURNING id, email, username, full_name, avatar_url, is_verified, role, created_at, updated_at`,
       values
     );
 
@@ -204,7 +202,7 @@ export class AuthService {
     currentPassword: string,
     newPassword: string
   ): Promise<void> {
-    const users = await query<{ password_hash: string }>(
+    const users = await query<{ password_hash: string | null }>(
       'SELECT password_hash FROM users WHERE id = $1',
       [userId]
     );
@@ -213,7 +211,15 @@ export class AuthService {
       throw new AppError('User not found', 404);
     }
 
+    if (!users[0].password_hash) {
+      throw new AppError(
+        'Password login is not enabled for this account. Please use Google login.',
+        400
+      );
+    }
+
     const isValid = await bcrypt.compare(currentPassword, users[0].password_hash);
+
     if (!isValid) {
       throw new AppError('Current password is incorrect', 401);
     }

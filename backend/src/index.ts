@@ -1,3 +1,4 @@
+import googleAuthRoutes from './routes/google-auth.routes';
 import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
@@ -14,8 +15,9 @@ import stocksRouter from './routes/stock.routes';
 import walletRouter from './routes/wallet.routes';
 import ordersRouter from './routes/orders.routes';
 import portfolioRouter from './routes/portfolio.routes';
-
+import aiRouter from './routes/ai.routes';
 import { PriceSimulator } from './services/priceSimulator.service';
+import adminRouter from './routes/admin.routes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -43,7 +45,10 @@ app.use(
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
-app.use(generalRateLimiter);
+
+if (env.nodeEnv === 'production') {
+  app.use(generalRateLimiter);
+}
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -57,10 +62,13 @@ app.get('/health', (_req, res) => {
 
 // Routes
 app.use('/api/auth', authRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/auth/google', googleAuthRoutes);
 app.use('/api/stocks', stocksRouter);
 app.use('/api/wallet', walletRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/portfolio', portfolioRouter);
+app.use('/api/ai', aiRouter);
 
 // WebSocket connection handler
 io.on('connection', (socket) => {
