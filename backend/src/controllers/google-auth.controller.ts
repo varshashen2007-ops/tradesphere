@@ -15,6 +15,7 @@ function generateToken(user: User): string {
       id: user.id,
       email: user.email,
       username: user.username,
+      role: user.role,        // ✅ FIXED: role now included
     },
     env.jwt.secret,
     {
@@ -88,8 +89,9 @@ export class GoogleAuthController {
 
       const googleUser = await verifyGoogleCredential(credential);
 
+      // ✅ FIXED: role now included in SELECT
       const existingUsers = await query<User>(
-        `SELECT id, email, username, full_name, avatar_url, is_verified, created_at, updated_at
+        `SELECT id, email, username, full_name, avatar_url, is_verified, role, created_at, updated_at
          FROM users
          WHERE email = $1`,
         [googleUser.email]
@@ -159,6 +161,7 @@ export class GoogleAuthController {
         const username = makeUsername(googleUser.email);
         const fakePasswordHash = `GOOGLE_AUTH_${googleUser.googleId}`;
 
+        // ✅ FIXED: role now included in RETURNING
         const userResult = await client.query(
           `INSERT INTO users (
             id,
@@ -170,7 +173,7 @@ export class GoogleAuthController {
             password_hash
           )
           VALUES ($1, $2, $3, $4, $5, true, $6)
-          RETURNING id, email, username, full_name, avatar_url, is_verified, created_at, updated_at`,
+          RETURNING id, email, username, full_name, avatar_url, is_verified, role, created_at, updated_at`,
           [
             userId,
             googleUser.email,
